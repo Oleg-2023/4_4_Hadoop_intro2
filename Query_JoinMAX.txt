@@ -1,0 +1,45 @@
+--show partitions customers
+--EXPLAIN
+-- Возраст вычисляется на отчетный год
+-- определяем возраст для subsript_year
+WITH 
+ages AS (  
+  SELECT p.idx, c.subscript_year,
+    CASE 
+      WHEN c.subscript_year-year(p.birthdate) > 64 then '65+'
+      WHEN c.subscript_year-year(p.birthdate) > 54 then '55-64'
+      WHEN c.subscript_year-year(p.birthdate) > 44 then '45-54'
+      WHEN c.subscript_year-year(p.birthdate) > 34 then '35-44'
+      WHEN c.subscript_year-year(p.birthdate) > 24 then '25-34'
+      WHEN c.subscript_year-year(p.birthdate) > 18 then '19-24'
+      ELSE '0-18' END AS age_group
+    FROM  customers c INNER JOIN people p ON c.idx=p.idx 
+),
+-- 
+companies_ages AS (
+  -- Предварительный анализ показал, что какую-либо связь между таблицами customers и organizations
+  -- можно установить только по колонкам company и name.
+  -- В таком случае новых данных в таблице organizations нет.
+  -- Раз поставлена задача использовать все таблицы, то будем считать, что 
+  -- мы посчитываем только подписчиков компаний присутствующих в organizations 
+  SELECT c.company, a.subscript_year, 
+    a.age_group, count(a.age_group) AS age_cnt
+    FROM customers c 
+    INNER JOIN ages a ON c.idx=a.idx
+    -- исключаем отсутствующие в organizations
+    INNER JOIN organizations org ON c.company=org.organ_name
+    GROUP BY c.company, a.subscript_year, a.age_group
+),
+companies_max_ages AS (
+    SELECT ca.subscript_year, ca.company, MAX(ca.age_cnt) max_cnt
+    FROM companies_ages ca
+    GROUP BY ca.subscript_year, ca.company
+)
+-- Если возрастные группы имеют одинаковое число подписчиков в разных возрастных группах,
+-- То для аналитики корректнее показать показать всех
+SELECT ca.company, ca.subscript_year as year, ca.age_group, ca.age_cnt
+  FROM companies_ages ca
+  INNER JOIN companies_max_ages ca1 ON ca.subscript_year=ca1.subscript_year AND 
+                                       ca.company=ca1.company AND
+                                       ca.age_cnt=ca1.max_cnt    
+ORDER BY year, company, age_group
